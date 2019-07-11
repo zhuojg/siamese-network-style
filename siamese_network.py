@@ -88,10 +88,10 @@ class SiameseNetwork(nn.Module):
         super(SiameseNetwork, self).__init__()
         self.pretrained_model = models.resnet34(pretrained=True)
         self.cnn = nn.Sequential(*list(self.pretrained_model.children())[:-2])
-        self.fc = nn.Linear(in_features=512 * 7 * 7, out_features=1)
+        self.fc = nn.Linear(in_features=512 * 7 * 7, out_features=1024)
         self.drop = nn.Dropout()
         self.acti = nn.Sigmoid()
-        self.final = nn.Linear(in_features=2, out_features=1)
+        self.final = nn.Linear(in_features=2048, out_features=1)
         self.final_acti = nn.Sigmoid()
 
     def forward(self, x1, x2):
