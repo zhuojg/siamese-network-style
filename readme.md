@@ -13,8 +13,8 @@ This work uses pre-trained ResNet34[2] as the basic, change the structure of las
 # Result
 The result looks good on training and test set, but verification on the large-scale design dataset is not available due to the lack of the data.
 Here are some results:  
-![image](https://github.com/zhuojg/siamese_network_for_style/result/result1.png)  
-![image](https://github.com/zhuojg/siamese_network_for_style/result/result2.png)
+![image](https://raw.githubusercontent.com/zhuojg/siamese_network_for_style/master/result/result1.png)  
+![image](https://raw.githubusercontent.com/zhuojg/siamese_network_for_style/master/result/result2.png)
 
 # Reference
 [1] Koch, Gregory, Richard Zemel, and Ruslan Salakhutdinov. "Siamese neural networks for one-shot image recognition." ICML deep learning workshop. Vol. 2. 2015.  
