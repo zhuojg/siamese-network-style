@@ -90,7 +90,6 @@ class SiameseNetwork(nn.Module):
         self.cnn = nn.Sequential(*list(self.pretrained_model.children())[:-2])
         self.fc = nn.Linear(in_features=512 * 7 * 7, out_features=1024)
         self.drop = nn.Dropout()
-        self.acti = nn.Sigmoid()
         self.final = nn.Linear(in_features=2048, out_features=1)
         self.final_acti = nn.Sigmoid()
 
@@ -99,8 +98,8 @@ class SiameseNetwork(nn.Module):
         output2 = self.cnn(x2)
         output1 = output1.view((-1, 512 * 7 * 7))
         output2 = output2.view((-1, 512 * 7 * 7))
-        output1 = self.acti(self.drop(self.fc(output1)))
-        output2 = self.acti(self.drop(self.fc(output2)))
+        output1 = self.drop(self.fc(output1))
+        output2 = self.drop(self.fc(output2))
         result = self.final(torch.cat((output1, output2), dim=1))
         result = self.final_acti(result)
 
