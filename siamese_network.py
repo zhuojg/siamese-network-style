@@ -205,13 +205,15 @@ class Trainer(object):
             'epoch',
             'iteration',
             'train/loss',
+            'train/acc',
             'elapsed_time',
         ]
 
         self.log_val_headers = [
             'epoch',
             'iteration',
-            'train/loss',
+            'val/loss',
+            'val/acc',
             'elapsed_time',
         ]
 
@@ -240,41 +242,45 @@ class Trainer(object):
         acc_all = []
 
         for batch_idx, (img1, img2, is_same) in tqdm.tqdm(
-            enumerate(self.val_loader),
-            total=len(self.val_loader),
-            desc='Validation Iteration=%d' % self.iteration,
-            ncols=80,
-            leave=False
+                enumerate(self.val_loader),
+                total=len(self.val_loader),
+                desc='Validation Epoch=%d' % self.epoch,
+                ncols=80,
+                leave=False
         ):
             img1, img2, is_same = Variable(img1), Variable(img2), Variable(is_same)
             is_same = torch.tensor(is_same, dtype=torch.float32)
+            # img1, img2, is_same = img1.cuda(), img2.cuda(), is_same.cuda()
+
             with torch.no_grad():
+                # result = self.model(img1, img2).cuda().squeeze(1)
                 result = self.model(img1, img2).squeeze(1)
 
             loss_fn = BCELoss(weight=None, reduce=True)
             loss = loss_fn(result, is_same)
             val_loss += loss
 
-        with open(os.path.join(self.out_path, 'log_val.csv'), 'a') as f:
-            elapsed_time = (datetime.datetime.now() - self.timestamp_start).total_seconds()
-            log = [self.epoch, self.iteration, val_loss, elapsed_time]
-            log = map(str, log)
-            f.write(','.join(log) + '\n')
+            acc = 0.
+            is_same = is_same.cpu()
+            result = result.cpu()
+            for index, item in enumerate(result):
+                if item.item() >= 0.5 and is_same[index].item() == 1:
+                    acc += 1
+                elif item.item() <= 0.5 and is_same[index].item() == 0:
+                    acc += 1
 
-        acc = 0.
-        is_same = is_same.cpu()
-        result = result.cpu()
-        for index, item in enumerate(result):
-            if item.item() > 0.5 and is_same[index].item() == 1:
-                acc += 1
-            elif item.item() < 0.5 and is_same[index].item() == 0:
-                acc += 1
+            acc /= 64
 
-        acc /= 8
-        acc_all.append(acc)
+            acc_all.append(acc)
 
         acc_all = np.array(acc_all)
-        print('Val acc: %s' % str(acc_all.mean()))
+        print('Val Acc=%s' % (str(acc_all.mean())))
+
+        with open(os.path.join(self.out_path, 'log_val.csv'), 'a') as f:
+            elapsed_time = (datetime.datetime.now() - self.timestamp_start).total_seconds()
+            log = [self.epoch, self.iteration, val_loss, acc_all.mean(), elapsed_time]
+            log = map(str, log)
+            f.write(','.join(log) + '\n')
 
         torch.save({
             'epoch': self.epoch,
@@ -292,12 +298,14 @@ class Trainer(object):
 
         epoch_loss = 0.
 
+        acc_all = []
+
         for batch_idx, (img1, img2, is_same) in tqdm.tqdm(
-            enumerate(self.train_loader),
-            total=len(self.train_loader),
-            desc='Train Epoch=%d' % self.epoch,
-            ncols=80,
-            leave=False
+                enumerate(self.train_loader),
+                total=len(self.train_loader),
+                desc='Train Epoch=%d' % self.epoch,
+                ncols=80,
+                leave=False
         ):
             iteration = batch_idx + self.epoch * len(self.train_loader)
             if self.iteration != 0 and (iteration - 1) != self.iteration:
@@ -307,6 +315,9 @@ class Trainer(object):
 
             img1, img2, is_same = Variable(img1), Variable(img2), Variable(is_same)
             is_same = torch.tensor(is_same, dtype=torch.float32)
+            # img1, img2, is_same = img1.cuda(), img2.cuda(), is_same.cuda()
+
+            # result = self.model(img1, img2).cuda().squeeze(1)
             result = self.model(img1, img2).squeeze(1)
 
             loss_fn = BCELoss(weight=None, reduce=True)
@@ -317,14 +328,30 @@ class Trainer(object):
             except Exception as e:
                 print(e)
 
-            epoch_loss += loss.detach().numpy()
+            epoch_loss += loss.detach().cpu().numpy()
+
+            if self.iteration > 0 and self.iteration % 3 == 0:
+                acc = 0.
+                is_same = is_same.cpu()
+                result = result.cpu()
+                for index, item in enumerate(result):
+                    if item.item() > 0.5 and is_same[index].item() == 1:
+                        acc += 1
+                    elif item.item() < 0.5 and is_same[index].item() == 0:
+                        acc += 1
+
+                acc /= 64
+
+                acc_all.append(acc)
+
+                print('Train Acc=%s' % str(np.array(acc_all).mean()))
 
             if self.iteration >= self.max_iter:
                 break
 
         with open(os.path.join(self.out_path, 'log_train.csv'), 'a') as f:
             elapsed_time = (datetime.datetime.now() - self.timestamp_start).total_seconds()
-            log = [self.epoch, self.iteration, epoch_loss, elapsed_time]
+            log = [self.epoch, self.iteration, epoch_loss, np.array(acc_all).mean(), elapsed_time]
             log = map(str, log)
             f.write(','.join(log) + '\n')
 
@@ -357,7 +384,7 @@ if __name__ == '__main__':
     )
 
     # model
-    model = SiameseNetworkSimple()
+    model = SiameseNetwork()
 
     # optimizer
     opt = SGD(
