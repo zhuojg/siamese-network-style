@@ -55,10 +55,11 @@ class SiameseNetworkClassifier(nn.Module):
     def __init__(self, pre_trained_path):
         super(SiameseNetworkClassifier, self).__init__()
         self.pre_trained_siamese_network = SiameseNetwork()
-        self.pre_trained_siamese_network.load_state_dict(torch.load(pre_trained_path, map_location='cpu')['model_state_dict'])
-        self.target_feature = nn.Sequential(
-            *list(self.pre_trained_siamese_network.cnn.children())
-        )
+        if len(pre_trained_path) > 0:
+            self.pre_trained_siamese_network.load_state_dict(torch.load(pre_trained_path, map_location='cpu')['model_state_dict'])
+
+        for item in self.pre_trained_siamese_network.parameters():
+            item.requires_grad = False
 
         self.fc = nn.Linear(in_features=1024, out_features=1)
         self.drop = nn.Dropout()
@@ -66,7 +67,7 @@ class SiameseNetworkClassifier(nn.Module):
 
     def forward(self, x):
         h = x
-        h = self.target_feature(h)
+        h = self.pre_trained_siamese_network.cnn(h)
         h = h.view(-1, 512 * 7 * 7)
         h = self.pre_trained_siamese_network.fc(h)
         h = self.drop(self.fc(h))
