@@ -7,12 +7,14 @@ import datetime
 from torch.optim import SGD
 import torch.utils.data.dataset
 import random
-from PIL import Image
+from PIL import Image, ImageFile
 from torch.autograd import Variable
 from torch.nn import BCELoss
 import math
 import numpy as np
 from siamese_network import SiameseNetwork
+from torchsummary import summary
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class ClassifierLoader(torch.utils.data.dataset.Dataset):
@@ -53,8 +55,11 @@ class SiameseNetworkClassifier(nn.Module):
     def __init__(self, pre_trained_path):
         super(SiameseNetworkClassifier, self).__init__()
         self.pre_trained_siamese_network = SiameseNetwork()
-        self.pre_trained_siamese_network.load_state_dict(torch.load(pre_trained_path)['model_state_dict'])
-        self.target_feature = nn.Sequential(*list(self.pre_trained_siamese_network.children())[:-3])
+        self.pre_trained_siamese_network.load_state_dict(torch.load(pre_trained_path, map_location='cpu')['model_state_dict'])
+        self.target_feature = nn.Sequential(
+            *list(self.pre_trained_siamese_network.cnn.children())
+        )
+
         self.fc = nn.Linear(in_features=1024, out_features=1)
         self.drop = nn.Dropout()
         self.sig = nn.Sigmoid()
@@ -62,6 +67,8 @@ class SiameseNetworkClassifier(nn.Module):
     def forward(self, x):
         h = x
         h = self.target_feature(h)
+        h = h.view(-1, 512 * 7 * 7)
+        h = self.pre_trained_siamese_network.fc(h)
         h = self.drop(self.fc(h))
         h = self.sig(h)
         return h
@@ -114,32 +121,32 @@ class Trainer(object):
         val_loss = 0.
         acc_all = []
 
-        for batch_idx, (img1, img2, is_same) in tqdm.tqdm(
+        for batch_idx, (img, label) in tqdm.tqdm(
                 enumerate(self.val_loader),
                 total=len(self.val_loader),
                 desc='Validation Epoch=%d' % self.epoch,
                 ncols=80,
                 leave=False
         ):
-            img1, img2, is_same = Variable(img1), Variable(img2), Variable(is_same)
-            is_same = torch.tensor(is_same, dtype=torch.float32)
-            img1, img2, is_same = img1.cuda(), img2.cuda(), is_same.cuda()
+            img, label = Variable(img), Variable(label)
+            label = torch.tensor(label, dtype=torch.float32)
+            img, label = img.cuda(), label.cuda()
 
             with torch.no_grad():
-                result = self.model(img1, img2).cuda().squeeze(1)
-                # result = self.model(img1, img2).squeeze(1)
+                result = self.model(img).cuda().squeeze(1)
+                # result = self.model(img).squeeze(1)
 
             loss_fn = BCELoss(weight=None, reduce=True)
-            loss = loss_fn(result, is_same)
+            loss = loss_fn(result, label)
             val_loss += loss
 
             acc = 0.
-            is_same = is_same.cpu()
+            lalbel = label.cpu()
             result = result.cpu()
             for index, item in enumerate(result):
-                if item.item() >= 0.5 and is_same[index].item() == 1:
+                if item.item() >= 0.5 and label[index].item() == 1:
                     acc += 1
-                elif item.item() <= 0.5 and is_same[index].item() == 0:
+                elif item.item() <= 0.5 and label[index].item() == 0:
                     acc += 1
 
             acc /= 64
@@ -173,7 +180,7 @@ class Trainer(object):
 
         acc_all = []
 
-        for batch_idx, (img1, img2, is_same) in tqdm.tqdm(
+        for batch_idx, (img, label) in tqdm.tqdm(
                 enumerate(self.train_loader),
                 total=len(self.train_loader),
                 desc='Train Epoch=%d' % self.epoch,
@@ -186,15 +193,15 @@ class Trainer(object):
             self.iteration = iteration
             self.opt.zero_grad()
 
-            img1, img2, is_same = Variable(img1), Variable(img2), Variable(is_same)
-            is_same = torch.tensor(is_same, dtype=torch.float32)
-            img1, img2, is_same = img1.cuda(), img2.cuda(), is_same.cuda()
+            img, label = Variable(img), Variable(label)
+            label = torch.tensor(label, dtype=torch.float32)
+            img, label = img.cuda(), label.cuda()
 
-            result = self.model(img1, img2).cuda().squeeze(1)
-            # result = self.model(img1, img2).squeeze(1)
+            result = self.model(img).cuda().squeeze(1)
+            # result = self.model(img).squeeze(1)
 
             loss_fn = BCELoss(weight=None, reduce=True)
-            loss = loss_fn(result, is_same)
+            loss = loss_fn(result, label)
             try:
                 loss.backward()
                 self.opt.step()
@@ -205,12 +212,12 @@ class Trainer(object):
 
             if self.iteration > 0 and self.iteration % 3 == 0:
                 acc = 0.
-                is_same = is_same.cpu()
+                label = label.cpu()
                 result = result.cpu()
                 for index, item in enumerate(result):
-                    if item.item() > 0.5 and is_same[index].item() == 1:
+                    if item.item() > 0.5 and label[index].item() == 1:
                         acc += 1
-                    elif item.item() < 0.5 and is_same[index].item() == 0:
+                    elif item.item() < 0.5 and label[index].item() == 0:
                         acc += 1
 
                 acc /= 64
