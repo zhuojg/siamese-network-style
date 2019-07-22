@@ -63,6 +63,41 @@ class SiameseLoader(torch.utils.data.dataset.Dataset):
         return len(self.data)
 
 
+def contrastive_loss(self, x1, x2, y):
+    margin = 1.
+    d = torch.pairwise_distance(x1, x2, keepdim=False)
+    d = d.tolist()
+    y = y.tolist()
+    loss = []
+
+    for i, item in enumerate(d):
+        loss.append(0.5 * y[i] * item * item + 0.5 * (1-y[i]) * max(0, (margin - item)) * max(0, (margin - item)))
+
+    loss = np.array(loss)
+
+    loss_mean = torch.Tensor([loss.mean()])
+
+    return Variable(loss_mean, requires_grad=True)
+
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self):
+        super(ContrastiveLoss, self).__init__()
+        return
+
+    def forward(self, x1, x2, y):
+        d = torch.pairwise_distance(x1, x2, keepdim=False)
+
+        margin = 1.
+        d = torch.pairwise_distance(x1, x2, keepdim=False)
+
+        zero_tensor = torch.Tensor([0]*d.shape[0])
+
+        loss = 0.5 * y * d * d + 0.5 * (1-y) * torch.max(zero_tensor, margin - d) * torch.max(zero_tensor, margin - d)
+
+        return torch.mean(loss)
+
+
 class Trainer(object):
     def __init__(self, model, optimizer, train_loader, val_loader, out_path, max_iter):
         self.model = model
@@ -109,22 +144,6 @@ class Trainer(object):
         # self.viz.text('train_loss', win='train_loss')
         # self.viz.text('val_loss', win='val_loss')
 
-    def contrastive_loss(self, x1, x2, y):
-        margin = 1.
-        d = torch.pairwise_distance(x1, x2, keepdim=False)
-        d = d.tolist()
-        y = y.tolist()
-        loss = []
-
-        for i, item in enumerate(d):
-            loss.append(0.5 * y[i] * item * item + 0.5 * (1-y[i]) * max(0, (margin - item)) * max(0, (margin - item)))
-
-        loss = np.array(loss)
-
-        loss_mean = torch.Tensor([loss.mean()])
-
-        return Variable(loss_mean, requires_grad=True)
-
     def validate(self):
         training = self.model.training
         self.model.eval()
@@ -149,7 +168,8 @@ class Trainer(object):
                 result1 = self.model(img1).squeeze(1)
                 result2 = self.model(img2).squeeze(1)
 
-            loss = self.contrastive_loss(result1, result2, is_same)
+            loss_fn = ContrastiveLoss()
+            loss = loss_fn(result1, result2, is_same)
             val_loss += loss
 
             # acc = 0.
@@ -216,7 +236,8 @@ class Trainer(object):
             result1 = self.model(img1).squeeze(1)
             result2 = self.model(img2).squeeze(1)
 
-            loss = self.contrastive_loss(result1, result2, is_same)
+            loss_fn = ContrastiveLoss()
+            loss = loss_fn(result1, result2, is_same)
 
             try:
                 loss.backward()
